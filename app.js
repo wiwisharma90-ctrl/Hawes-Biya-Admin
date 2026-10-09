@@ -2117,3 +2117,40 @@ window.testAdminProfiles = async function () {
     throw error;
   }
 };
+
+async function updateProgramStatus(button) {
+  const programId = button.dataset.updateProgramStatus;
+  const newStatus = button.dataset.newStatus;
+
+  if (!programId || !newStatus) return;
+
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "جارٍ التحديث...";
+
+  try {
+    // 1. إرسال التحديث الفعلي إلى جدول programs في قاعدة بيانات Supabase
+    const { error } = await requireClient()
+      .from("programs")
+      .update({ status: newStatus })
+      .eq("id", programId);
+
+    if (error) throw error;
+
+    // 2. تحديث الواجهة محلياً بعد نجاح التحديث في القاعدة
+    if (state.page === "programs" && Array.isArray(state.data)) {
+      const program = state.data.find((p) => String(p.id) === programId);
+      if (program) {
+        program.status = newStatus;
+      }
+      renderPage();
+    }
+
+    showToast(newStatus === "published" ? "تم قبول ونشر البرنامج بنجاح" : "تم رفض البرنامج");
+  } catch (error) {
+    showToast(`تعذر التحديث: ${formatError(error)}`);
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
