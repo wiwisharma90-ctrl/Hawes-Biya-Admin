@@ -1207,14 +1207,31 @@ function programsPage(programs) {
         </td>
 
         <td>
-          <button
-            class="button button-danger program-delete-button"
-            type="button"
-            data-delete-program="${escapeHtml(program.id)}"
-            aria-label="حذف البرنامج ${escapeHtml(program.title || "")}"
-          >
-            حذف البرنامج
-          </button>
+          <div class="row-actions" style="display: flex; gap: 5px; flex-wrap: nowrap;">
+            <button
+              class="button button-soft program-delete-button"
+              type="button"
+              data-update-program-status="${escapeHtml(program.id)}"
+              data-new-status="published"
+            >
+              قبول ونشر
+            </button>
+            <button
+              class="button button-danger program-delete-button"
+              type="button"
+              data-update-program-status="${escapeHtml(program.id)}"
+              data-new-status="rejected"
+            >
+              رفض
+            </button>
+            <button
+              class="button button-danger program-delete-button"
+              type="button"
+              data-delete-program="${escapeHtml(program.id)}"
+            >
+              حذف
+            </button>
+          </div>
         </td>
       </tr>
     `
@@ -1248,7 +1265,7 @@ function programsPage(programs) {
         "تاريخ البدء",
         "الحالة",
         "تاريخ الإنشاء",
-        "إجراء"
+        "إجراءات التحكم"
       ],
       rows
     )}
@@ -1692,7 +1709,7 @@ function renderSettingsSection(section) {
   if (section === "general") {
     panel.innerHTML = `
       <h2>إعدادات عامة</h2>
-      <p>إعدادات عامة للوحة الإدارة لا تحتاج إلى جدول جديد في Supabase حاليًا.</p>
+      <p>إعدادات عامة للوحة الإدارة لا تحتاج إلى جدول جديد في Supabase حالياً.</p>
       <div class="setting-row">
         <div>
           <strong>مصدر البيانات</strong>
@@ -1811,7 +1828,7 @@ function showToast(message) {
 }
 
 /* -------------------------------------------------------
-   Global click handling
+   Global click handling & Program Actions
 ------------------------------------------------------- */
 
 document.addEventListener("click", (event) => {
@@ -1826,6 +1843,12 @@ document.addEventListener("click", (event) => {
   if (retryButton) {
     state.requestId += 1;
     void loadCurrentPage(state.requestId);
+    return;
+  }
+
+  const updateStatusButton = event.target.closest("[data-update-program-status]");
+  if (updateStatusButton) {
+    void updateProgramStatus(updateStatusButton);
     return;
   }
 
@@ -1857,6 +1880,40 @@ document.addEventListener("click", (event) => {
     return;
   }
 });
+
+async function updateProgramStatus(button) {
+  const programId = button.dataset.updateProgramStatus;
+  const newStatus = button.dataset.newStatus;
+
+  if (!programId || !newStatus) return;
+
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "جارٍ التحديث...";
+
+  try {
+    const { error } = await requireClient()
+      .from("programs")
+      .update({ status: newStatus })
+      .eq("id", programId);
+
+    if (error) throw error;
+
+    if (state.page === "programs" && Array.isArray(state.data)) {
+      const program = state.data.find((p) => String(p.id) === programId);
+      if (program) {
+        program.status = newStatus;
+      }
+      renderPage();
+    }
+
+    showToast(newStatus === "published" ? "تم قبول ونشر البرنامج بنجاح" : "تم رفض البرنامج");
+  } catch (error) {
+    showToast(`تعذر التحديث: ${formatError(error)}`);
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
 
 async function deleteProgram(button) {
   const programId = button.dataset.deleteProgram;
