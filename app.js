@@ -658,41 +658,57 @@ async function loadPrograms() {
    Bookings
 ------------------------------------------------------- */
 async function loadBookings() {
-  const bookings = await selectAllRows(
-    "bookings",
-    "id,tourist_id,program_id,people_count,total_price,budget,status,created_at",
-    (query) => query
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: true })
-  );
-
-  if (!bookings.length) {
+  let bookings = [];
+  try {
+    bookings = await selectAllRows(
+      "bookings",
+      "id,tourist_id,program_id,people_count,total_price,budget,status,created_at",
+      (query) => query.order("created_at", { ascending: false })
+    );
+  } catch (e) {
+    console.error("Error loading bookings:", e);
     return [];
   }
 
-  const programIds = [...new Set(bookings.map((b) => b.program_id).filter(Boolean))];
+  if (!bookings || !bookings.length) {
+    return [];
+  }
 
-  const programs = [];
-  for (let offset = 0; offset < programIds.length; offset += 100) {
-    programs.push(
-      ...await selectAllRows(
-        "programs",
-        "id,title,host_id",
-        (query) => query.in("id", programIds.slice(offset, offset + 100))
-      )
-    );
+  // جلب البرامج والمنظمين بشكل آمن
+  let programs = [];
+  try {
+    const programIds = [...new Set(bookings.map((b) => b.program_id).filter(Boolean))];
+    if (programIds.length > 0) {
+      for (let offset = 0; offset < programIds.length; offset += 100) {
+        programs.push(
+          ...await selectAllRows(
+            "programs",
+            "id,title,host_id",
+            (query) => query.in("id", programIds.slice(offset, offset + 100))
+          )
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("Could not load programs for bookings:", err);
   }
 
   const programsById = new Map(programs.map((p) => [p.id, p]));
 
-  const userIds = [
-    ...new Set([
-      ...bookings.map((b) => b.tourist_id),
-      ...programs.map((p) => p.host_id)
-    ].filter(Boolean))
-  ];
-
-  const profiles = await selectProfilesByIds(userIds);
+  let profiles = [];
+  try {
+    const userIds = [
+      ...new Set([
+        ...bookings.map((b) => b.tourist_id),
+        ...programs.map((p) => p.host_id)
+      ].filter(Boolean))
+    ];
+    if (userIds.length > 0) {
+      profiles = await selectProfilesByIds(userIds);
+    }
+  } catch (err) {
+    console.warn("Could not load profiles for bookings:", err);
+  }
 
   const profilesById = new Map(profiles.map((p) => [p.id, p]));
 
@@ -700,12 +716,13 @@ async function loadBookings() {
     const program = programsById.get(booking.program_id);
     return {
       ...booking,
-      tourist: profilesById.get(booking.tourist_id),
-      program: program,
-      host: profilesById.get(program?.host_id)
+      tourist: profilesById.get(booking.tourist_id) || null,
+      program: program || null,
+      host: profilesById.get(program?.host_id) || null
     };
   });
 }
+
 
 /* -------------------------------------------------------
    Complaints
