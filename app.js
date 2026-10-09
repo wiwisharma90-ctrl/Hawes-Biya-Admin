@@ -611,27 +611,33 @@ async function loadHosts() {
 /* -------------------------------------------------------
    Programs
 ------------------------------------------------------- */
-
 async function loadPrograms() {
-  const programs = await selectAllRows(
-    "programs",
-    "id,host_id,title,location,price,duration_days,start_dae,status,created_at",
-    (query) => query
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: true })
-  );
-
-  if (!programs.length) {
+  let programs = [];
+  try {
+    // جلب البرامج مع تصحيح اسم العمود وتفادي الأخطاء
+    programs = await selectAllRows(
+      "programs",
+      "id,host_id,title,location,price,duration_days,status,created_at",
+      (query) => query.order("created_at", { ascending: false })
+    );
+  } catch (e) {
+    console.error("Error loading programs:", e);
     return [];
   }
 
-  let hosts = [];
+  if (!programs || !programs.length) {
+    return [];
+  }
 
+  // محاولة جلب بيانات المنظمين بشكل آمن بدون أن توقف عرض البرامج إن فشلت
+  let hosts = [];
   try {
-    hosts = await selectProfilesByIds(
-      programs.map((program) => program.host_id)
-    );
-  } catch {
+    const hostIds = [...new Set(programs.map((p) => p.host_id).filter(Boolean))];
+    if (hostIds.length > 0) {
+      hosts = await selectProfilesByIds(hostIds);
+    }
+  } catch (err) {
+    console.warn("Could not load hosts for programs:", err);
     hosts = [];
   }
 
@@ -642,10 +648,11 @@ async function loadPrograms() {
   return programs.map(
     (program) => ({
       ...program,
-      host: hostsById.get(program.host_id)
+      host: hostsById.get(program.host_id) || null
     })
   );
 }
+
 
 /* -------------------------------------------------------
    Bookings
